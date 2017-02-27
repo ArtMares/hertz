@@ -3,6 +3,7 @@ package main
 //Native libraries
 import "fmt"
 import "strings"
+import "os"
 
 //External libraries
 import "github.com/bwmarrin/discordgo"
@@ -14,23 +15,31 @@ type Voice struct {
 	Guild           string
 }
 
-var token string = "BOT_TOKEN"
-var prefix string = "PREFIX_CHAR"
+var token string
+var prefix string
 var voiceConnections []Voice
 
 func main() {
 	//Creating a new Discord Go instance
+
+	if len(os.Args) >= 3 {
+		token = os.Args[1]
+		prefix = os.Args[2]
+	} else {
+		fmt.Println("Please enter a token and a prefix")
+		return
+	}
+
 	bot, err := discordgo.New("Bot " + token)
 
 	//Listening for possible error on bot creation
 	if err != nil {
-		fmt.Println("Error launching bot")
 		fmt.Println(err)
 		return
 	}
 
 	//Adding the handler that will listen for users commands
-	bot.AddHandler(commandHandler)
+	go bot.AddHandler(commandHandler)
 
 	//Connection the bot to the Discord API and listening for errors
 	err = bot.Open()
@@ -44,14 +53,22 @@ func main() {
 func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var splittedCommand []string = strings.Split(m.Content, "")
 	var command string = strings.Join(splittedCommand[1:], "")
+	channel, err := s.State.Channel(m.ChannelID)
+	if err != nil {
+		fmt.Println(err)
+	}
+	guild, err := s.State.Guild(channel.GuildID)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	//Checking the prefix
 	if splittedCommand[0] == prefix {
-
+		voiceChannel := findVoiceChannelID(guild, m)
 		if command == "connect" {
-			voiceConnections = append(voiceConnections, connectToVoiceChannel(s, "GUILD_ID", "CHANNEL_ID"))
+			voiceConnections = append(voiceConnections, connectToVoiceChannel(s, channel.GuildID, voiceChannel))
 		} else if command == "disconnect" {
-			disconnectFromVoiceChannel("GUILD_ID", "CHANNEL_ID")
+			disconnectFromVoiceChannel(channel.GuildID, voiceChannel)
 		}
 	}
 }
@@ -64,12 +81,20 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 	}
 }
 
+func findVoiceChannelID(guild *discordgo.Guild, message *discordgo.MessageCreate) string {
+	var channelID string
+	for _, vs := range guild.VoiceStates {
+		if vs.UserID == message.Author.ID {
+				channelID = vs.ChannelID
+			}
+	}
+	return channelID
+}
+
 func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string) Voice {
 	vs, err := bot.ChannelVoiceJoin(guild, channel, false, true)
 	if err != nil {
-		fmt.Println("Error connecting to the voice channel")
 		fmt.Println(err)
-
 	}
 	return Voice{
 		VoiceConnection: vs,
