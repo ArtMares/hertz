@@ -7,12 +7,14 @@ import "os"
 
 //External libraries
 import "github.com/bwmarrin/discordgo"
+import "github.com/bwmarrin/dgvoice"
 
 //Defining voice structure
 type Voice struct {
 	VoiceConnection *discordgo.VoiceConnection
 	Channel         string
 	Guild           string
+	IsPlaying   	bool	
 }
 
 var token string
@@ -47,12 +49,13 @@ func main() {
 	//Informing the user the bot has started and wating for a channel return to prevent the program to stop
 	fmt.Println("The bot is launched, to stop it, press CTRL+C")
 	<-make(chan int)
+	bot.Close()
 	return
 }
 
 func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var splittedCommand []string = strings.Split(m.Content, "")
-	var command string = strings.Join(splittedCommand[1:], "")
+	var commandArgs[]string = strings.Split(m.Content, " ")
 	channel, err := s.State.Channel(m.ChannelID)
 	if err != nil {
 		fmt.Println(err)
@@ -61,14 +64,15 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if err != nil {
 		fmt.Println(err)
 	}
-
 	//Checking the prefix
 	if splittedCommand[0] == prefix {
 		voiceChannel := findVoiceChannelID(guild, m)
-		if command == "connect" {
+		if commandArgs[0] == prefix + "connect" {
 			voiceConnections = append(voiceConnections, connectToVoiceChannel(s, channel.GuildID, voiceChannel))
-		} else if command == "disconnect" {
+		} else if commandArgs[0] == prefix + "disconnect" {
 			disconnectFromVoiceChannel(channel.GuildID, voiceChannel)
+		} else if commandArgs[0] == prefix + "play" {
+			go playAudioFile(commandArgs[1], channel.GuildID, voiceChannel)
 		}
 	}
 }
@@ -79,6 +83,23 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 			_ = voice.VoiceConnection.Disconnect()
 		}
 	}
+}
+
+func findVoiceConnection(guild string, channel string) Voice {
+	var voiceConnection Voice
+	for _, vc := range voiceConnections {
+		if vc.Guild == guild && vc.Channel == channel {
+			voiceConnection = vc
+		}
+	}
+	return voiceConnection
+
+}
+
+func playAudioFile(file string, guild string, channel string) {
+	var voiceConnection Voice = findVoiceConnection(guild, channel)
+	voiceConnection.IsPlaying = true
+	dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
 }
 
 func findVoiceChannelID(guild *discordgo.Guild, message *discordgo.MessageCreate) string {
