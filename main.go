@@ -54,7 +54,6 @@ func main() {
 }
 
 func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	var splittedCommand []string = strings.Split(m.Content, "")
 	var commandArgs[]string = strings.Split(m.Content, " ")
 	channel, err := s.State.Channel(m.ChannelID)
 	if err != nil {
@@ -64,23 +63,24 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	//Checking the prefix
-	if splittedCommand[0] == prefix {
-		voiceChannel := findVoiceChannelID(guild, m)
-		if commandArgs[0] == prefix + "connect" {
-			voiceConnections = append(voiceConnections, connectToVoiceChannel(s, channel.GuildID, voiceChannel))
-		} else if commandArgs[0] == prefix + "disconnect" {
-			disconnectFromVoiceChannel(channel.GuildID, voiceChannel)
-		} else if commandArgs[0] == prefix + "play" {
-			go playAudioFile(commandArgs[1], channel.GuildID, voiceChannel)
-		}
+	voiceChannel := findVoiceChannelID(guild, m)
+	if commandArgs[0] == prefix + "connect" {
+		voiceConnections = append(voiceConnections, connectToVoiceChannel(s, channel.GuildID, voiceChannel))
+	} else if commandArgs[0] == prefix + "disconnect" {
+		disconnectFromVoiceChannel(channel.GuildID, voiceChannel)
+	} else if commandArgs[0] == prefix + "play" {
+		go playAudioFile(commandArgs[1], channel.GuildID, voiceChannel)
+	} else if commandArgs[0] == prefix + "stop" {
+		stopAudioFile(channel.GuildID, voiceChannel)
 	}
 }
 
 func disconnectFromVoiceChannel(guild string, channel string) {
-	for _, voice := range voiceConnections {
+	for index, voice := range voiceConnections {
 		if voice.Channel == channel && voice.Guild == guild {
 			_ = voice.VoiceConnection.Disconnect()
+			voiceConnections = append(voiceConnections[:index], voiceConnections[index+1:]...)
+			fmt.Println("Voice channel deleted")
 		}
 	}
 }
@@ -98,8 +98,17 @@ func findVoiceConnection(guild string, channel string) Voice {
 
 func playAudioFile(file string, guild string, channel string) {
 	var voiceConnection Voice = findVoiceConnection(guild, channel)
-	voiceConnection.IsPlaying = true
-	dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
+	if voiceConnection.IsPlaying == false {
+		voiceConnection.IsPlaying = true
+		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
+	}
+	voiceConnection.IsPlaying = false
+}
+
+func stopAudioFile(guild string, channel string) {
+	var voiceConnection Voice = findVoiceConnection(guild, channel)
+	voiceConnection.IsPlaying = false
+	dgvoice.KillPlayer()
 }
 
 func findVoiceChannelID(guild *discordgo.Guild, message *discordgo.MessageCreate) string {
@@ -121,6 +130,7 @@ func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string)
 		VoiceConnection: vs,
 		Channel:         channel,
 		Guild:           guild,
+		IsPlaying: 		 false,
 	}
 
 }
