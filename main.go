@@ -8,6 +8,7 @@ import "os"
 //External libraries
 import "github.com/bwmarrin/discordgo"
 import "github.com/bwmarrin/dgvoice"
+import "github.com/otium/ytdl"
 
 //Defining voice structure
 type Voice struct {
@@ -72,7 +73,9 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		go playAudioFile(commandArgs[1], channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "stop" {
 		stopAudioFile(channel.GuildID, voiceChannel)
-	}
+	} else if commandArgs[0] == prefix + "youtube" {
+		go playYoutubeLink(commandArgs[1], channel.GuildID, voiceChannel)
+	}	
 }
 
 func disconnectFromVoiceChannel(guild string, channel string) {
@@ -80,39 +83,41 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 		if voice.Channel == channel && voice.Guild == guild {
 			_ = voice.VoiceConnection.Disconnect()
 			voiceConnections = append(voiceConnections[:index], voiceConnections[index+1:]...)
-			fmt.Println("Voice channel deleted")
 		}
 	}
 }
 
-func findVoiceConnection(guild string, channel string) Voice {
+func findVoiceConnection(guild string, channel string) (Voice, int) {
 	var voiceConnection Voice
-	for _, vc := range voiceConnections {
+	var index int
+	for i, vc := range voiceConnections {
 		if vc.Guild == guild && vc.Channel == channel {
 			voiceConnection = vc
+			index = i
 		}
 	}
-	return voiceConnection
+	return voiceConnection, index
 
 }
 
 func playAudioFile(file string, guild string, channel string) {
-	var voiceConnection Voice = findVoiceConnection(guild, channel)
+	voiceConnection, index := findVoiceConnection(guild, channel)
 	if voiceConnection.IsPlaying == false {
-		voiceConnection.IsPlaying = true
+		voiceConnections[index].IsPlaying = true
 		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
+		voiceConnections[index].IsPlaying = false
 	}
-	voiceConnection.IsPlaying = false
 }
 
 func stopAudioFile(guild string, channel string) {
-	var voiceConnection Voice = findVoiceConnection(guild, channel)
-	voiceConnection.IsPlaying = false
+	_, index := findVoiceConnection(guild, channel)
+	voiceConnections[index].IsPlaying = false
 	dgvoice.KillPlayer()
 }
 
 func findVoiceChannelID(guild *discordgo.Guild, message *discordgo.MessageCreate) string {
 	var channelID string
+	
 	for _, vs := range guild.VoiceStates {
 		if vs.UserID == message.Author.ID {
 				channelID = vs.ChannelID
@@ -133,4 +138,26 @@ func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string)
 		IsPlaying: 		 false,
 	}
 
+}
+
+func playYoutubeLink(link string, guild string, channel string) {
+	video, err := ytdl.GetVideoInfo(link)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	for _, format := range video.Formats {
+		if format.AudioEncoding == "opus" || format.AudioEncoding == "aac" || format.AudioEncoding == "vorbis" {
+			data,err := video.GetDownloadURL(format)
+			if err != nil{
+				fmt.Println(err)
+			}
+			url := data.String()
+			go playAudioFile(url, guild, channel)
+			fmt.Println("Playing from youtube using codec " + format.AudioEncoding)
+			return
+		}
+	}
+	
 }
