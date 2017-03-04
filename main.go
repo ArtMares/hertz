@@ -80,7 +80,7 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 func disconnectFromVoiceChannel(guild string, channel string) {
 	for index, voice := range voiceConnections {
-		if voice.Channel == channel && voice.Guild == guild {
+		if voice.Guild == guild {
 			_ = voice.VoiceConnection.Disconnect()
 			voiceConnections = append(voiceConnections[:index], voiceConnections[index+1:]...)
 		}
@@ -91,7 +91,7 @@ func findVoiceConnection(guild string, channel string) (Voice, int) {
 	var voiceConnection Voice
 	var index int
 	for i, vc := range voiceConnections {
-		if vc.Guild == guild && vc.Channel == channel {
+		if vc.Guild == guild {
 			voiceConnection = vc
 			index = i
 		}
@@ -128,6 +128,9 @@ func findVoiceChannelID(guild *discordgo.Guild, message *discordgo.MessageCreate
 
 func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string) Voice {
 	vs, err := bot.ChannelVoiceJoin(guild, channel, false, true)
+	
+	checkForDoubleVoiceConnection(guild, channel)
+
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -138,6 +141,14 @@ func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string)
 		IsPlaying: 		 false,
 	}
 
+}
+
+func checkForDoubleVoiceConnection(guild string, channel string) {
+	for index, voice := range voiceConnections {
+		if voice.Guild == guild {
+			voiceConnections = append(voiceConnections[:index], voiceConnections[index+1:]...)
+		}
+	}
 }
 
 func playYoutubeLink(link string, guild string, channel string) {
