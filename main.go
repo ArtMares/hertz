@@ -145,6 +145,7 @@ func playYoutubeLink(link string, guild string, channel string) {
 
 	if err != nil {
 		fmt.Println(err)
+		return // Returning to avoid crash when video informations could not be found
 	}
 
 	for _, format := range video.Formats {
