@@ -4,6 +4,8 @@ package main
 import "fmt"
 import "strings"
 import "os"
+import "encoding/json"
+import "io/ioutil"
 
 //External libraries
 import "github.com/bwmarrin/discordgo"
@@ -18,6 +20,11 @@ type Voice struct {
 	IsPlaying   	bool	
 }
 
+type Configuration struct {
+	Token string `json:"token"`
+	Prefix string `json:"prefix"`
+}
+
 var token string
 var prefix string
 var voiceConnections []Voice
@@ -28,8 +35,11 @@ func main() {
 	if len(os.Args) >= 3 {
 		token = os.Args[1]
 		prefix = os.Args[2]
+		fmt.Println("Configuration loaded from params")
+	} else if(loadConfiguration()) {
+		fmt.Println("Configuration loaded from JSON config file")
 	} else {
-		fmt.Println("Please enter a token and a prefix")
+		fmt.Println("Please enter a token and a prefix or add a config.json file")
 		return
 	}
 
@@ -53,6 +63,20 @@ func main() {
 	bot.Close()
 	return
 }
+
+func loadConfiguration() bool {
+	file, err := ioutil.ReadFile("./config.json")
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	var config Configuration
+	json.Unmarshal(file, config)
+	token = config.Token
+	prefix = config.Prefix
+	return true
+}
+
 
 func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var commandArgs[]string = strings.Split(m.Content, " ")
