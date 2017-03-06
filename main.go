@@ -1,16 +1,20 @@
 package main
 
 //Native libraries
-import "fmt"
-import "strings"
-import "os"
-import "encoding/json"
-import "io/ioutil"
+import (
+	"fmt"
+	"strings"
+	"os"
+	"encoding/json"
+	"io/ioutil"
+)
 
 //External libraries
-import "github.com/bwmarrin/discordgo"
-import "github.com/bwmarrin/dgvoice"
-import "github.com/otium/ytdl"
+import (
+	"github.com/bwmarrin/discordgo"
+	"github.com/bwmarrin/dgvoice"
+	"github.com/otium/ytdl"
+)
 
 //Defining voice structure
 type Voice struct {
@@ -25,9 +29,17 @@ type Configuration struct {
 	Prefix string `json:"prefix"`
 }
 
+type Song struct {
+	Link string
+	Type string
+	Guild string
+	Channel string
+}
+
 var token string
 var prefix string
 var voiceConnections []Voice
+var queue []Song
 
 func main() {
 	//Creating a new Discord Go instance
@@ -94,7 +106,7 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	} else if commandArgs[0] == prefix + "disconnect" {
 		disconnectFromVoiceChannel(channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "play" {
-		go playAudioFile(commandArgs[1], channel.GuildID, voiceChannel)
+		go playAudioFile(commandArgs[1], channel.GuildID, voiceChannel, "web")
 	} else if commandArgs[0] == prefix + "stop" {
 		stopAudioFile(channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "youtube" {
@@ -124,12 +136,33 @@ func findVoiceConnection(guild string, channel string) (Voice, int) {
 
 }
 
-func playAudioFile(file string, guild string, channel string) {
+func nextSong(){
+	if len(queue) > 0 {
+		go playAudioFile(queue[0].Link, queue[0].Guild, queue[0].Channel, queue[0].Type)
+		queue = append(queue[:0], queue[1:]...)
+	} else {
+		return
+	}
+}
+
+func addSong(song Song){
+	queue = append(queue, song)
+}
+
+func playAudioFile(file string, guild string, channel string, linkType string) {
 	voiceConnection, index := findVoiceConnection(guild, channel)
 	if voiceConnection.IsPlaying == false {
 		voiceConnections[index].IsPlaying = true
 		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
 		voiceConnections[index].IsPlaying = false
+		nextSong()
+	} else {
+		addSong(Song{
+			Link: file,
+			Type: linkType,
+			Guild: guild,
+			Channel: channel,
+		})
 	}
 }
 
@@ -190,7 +223,7 @@ func playYoutubeLink(link string, guild string, channel string) {
 				fmt.Println(err)
 			}
 			url := data.String()
-			go playAudioFile(url, guild, channel)
+			go playAudioFile(url, guild, channel, "youtube")
 			fmt.Println("Playing from youtube using codec " + format.AudioEncoding)
 			return
 		}
