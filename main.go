@@ -117,13 +117,13 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	} else if commandArgs[0] == prefix + "disconnect" {
 		disconnectFromVoiceChannel(channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "play" {
-		go playAudioFile(commandArgs[1], channel.GuildID, voiceChannel, "web")
+		go playAudioFile(cleanLink(commandArgs[1]), channel.GuildID, voiceChannel, "web")
 	} else if commandArgs[0] == prefix + "stop" {
 		stopAudioFile(channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "youtube" {
-		go playYoutubeLink(commandArgs[1], channel.GuildID, voiceChannel)
+		go playYoutubeLink(cleanLink(commandArgs[1]), channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "soundcloud" {
-		go playSoundcloudLink(commandArgs[1], channel.GuildID, voiceChannel)
+		go playSoundcloudLink(cleanLink(commandArgs[1]), channel.GuildID, voiceChannel)
 	}
 }
 
@@ -134,6 +134,11 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 			voiceConnections = append(voiceConnections[:index], voiceConnections[index+1:]...)
 		}
 	}
+}
+
+func cleanLink(link string) string {
+	firstTreatment := strings.Replace(link, "<", "", 1)
+	return strings.Replace(firstTreatment, ">", "", 1)
 }
 
 func findVoiceConnection(guild string, channel string) (Voice, int) {
