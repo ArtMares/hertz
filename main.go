@@ -7,6 +7,7 @@ import (
 	"os"
 	"encoding/json"
 	"io/ioutil"
+	"time"
 )
 
 //External libraries
@@ -14,6 +15,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/dgvoice"
 	"github.com/otium/ytdl"
+	"github.com/franela/goreq"
 )
 
 //Defining voice structure
@@ -27,6 +29,7 @@ type Voice struct {
 type Configuration struct {
 	Token string `json:"token"`
 	Prefix string `json:"prefix"`
+	SoundcloudToken string `json:"soundcloudToken"`
 }
 
 type Song struct {
@@ -36,22 +39,29 @@ type Song struct {
 	Channel string
 }
 
+type SoundcloudResponse struct {
+	Link string `json:"stream_url"`
+	Title string `json:"title"`
+}
+
 var token string
 var prefix string
+var soundcloudToken string
 var voiceConnections []Voice
 var queue []Song
 
 func main() {
 	//Creating a new Discord Go instance
 
-	if len(os.Args) >= 3 {
+	if len(os.Args) >= 4 {
 		token = os.Args[1]
-		prefix = os.Args[2]
+		soundcloudToken = os.Args[2]
+		prefix = os.Args[3]
 		fmt.Println("Configuration loaded from params")
 	} else if(loadConfiguration()) {
 		fmt.Println("Configuration loaded from JSON config file")
 	} else {
-		fmt.Println("Please enter a token and a prefix or add a config.json file")
+		fmt.Println("Please enter a token, a soundcloud token and a prefix or add a config.json file")
 		return
 	}
 
@@ -86,6 +96,7 @@ func loadConfiguration() bool {
 	json.Unmarshal(file, config)
 	token = config.Token
 	prefix = config.Prefix
+	soundcloudToken = config.SoundcloudToken
 	return true
 }
 
@@ -111,7 +122,9 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		stopAudioFile(channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "youtube" {
 		go playYoutubeLink(commandArgs[1], channel.GuildID, voiceChannel)
-	}	
+	} else if commandArgs[0] == prefix + "soundcloud" {
+		go playSoundcloudLink(commandArgs[1], channel.GuildID, voiceChannel)
+	}
 }
 
 func disconnectFromVoiceChannel(guild string, channel string) {
@@ -224,9 +237,25 @@ func playYoutubeLink(link string, guild string, channel string) {
 			}
 			url := data.String()
 			go playAudioFile(url, guild, channel, "youtube")
-			fmt.Println("Playing from youtube using codec " + format.AudioEncoding)
+			fmt.Println("Playing from youtube using codec " + format.AudioEncoding) // DELETE OR ENHANCE
 			return
 		}
 	}
 	
+}
+
+func playSoundcloudLink(link string, guild string, channel string) {
+	var scRequestUri string = "https://api.soundcloud.com/resolve?url=" + link + "&client_id=" + soundcloudToken
+	res, err := goreq.Request{
+		Uri: scRequestUri,
+		MaxRedirects: 2,
+		Timeout:   5000 * time.Millisecond,
+	}.Do()
+	if err != nil {
+		fmt.Println(err)
+	}
+	var soundcloudDatas SoundcloudResponse
+	res.Body.FromJsonTo(&soundcloudDatas)
+	soundcloudDatas.Link += "&client_id=" + soundcloudToken
+	go playAudioFile(soundcloudDatas.Link, guild, channel, "soundcloud")
 }
