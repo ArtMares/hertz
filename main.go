@@ -131,6 +131,7 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 	for index, voice := range voiceConnections {
 		if voice.Guild == guild {
 			_ = voice.VoiceConnection.Disconnect()
+			dgvoice.KillPlayer()
 			voiceConnections = append(voiceConnections[:index], voiceConnections[index+1:]...)
 		}
 	}
@@ -259,8 +260,12 @@ func playSoundcloudLink(link string, guild string, channel string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	var soundcloudDatas SoundcloudResponse
-	res.Body.FromJsonTo(&soundcloudDatas)
-	soundcloudDatas.Link += "&client_id=" + soundcloudToken
-	go playAudioFile(soundcloudDatas.Link, guild, channel, "soundcloud")
+	var soundcloudData SoundcloudResponse
+	res.Body.FromJsonTo(&soundcloudData)
+	soundcloudData.Link += "&client_id=" + soundcloudToken
+	go playAudioFile(soundcloudData.Link, guild, channel, "soundcloud")
+}
+
+func playYoutubePlaylist(link string, guild string, channel string) {
+	
 }
