@@ -29,7 +29,8 @@ type Voice struct {
 type Configuration struct {
 	Token string `json:"token"`
 	Prefix string `json:"prefix"`
-	SoundcloudToken string `json:"soundcloudToken"`
+	SoundcloudToken string `json:"soundcloud_token"`
+	YoutubeToken string `json:"youtube_token"`
 }
 
 type Song struct {
@@ -44,9 +45,26 @@ type SoundcloudResponse struct {
 	Title string `json:"title"`
 }
 
+type YoutubeRoot struct {
+	Items []YoutubeVideo `json:"items"`
+}
+
+type YoutubeVideo struct {
+	Snippet YoutubeSnippet `json:"snippet"` 
+}
+
+type YoutubeSnippet struct {
+	Resource ResourceID `json:"resourceId"`
+}
+
+type ResourceID struct {
+	VideoID string `json:"videoId"`
+}
+
 var token string
 var prefix string
 var soundcloudToken string
+var youtubeToken string
 var voiceConnections []Voice
 var queue []Song
 
@@ -56,12 +74,13 @@ func main() {
 	if len(os.Args) >= 4 {
 		token = os.Args[1]
 		soundcloudToken = os.Args[2]
-		prefix = os.Args[3]
+		youtubeToken = os.Args[3]
+		prefix = os.Args[4]
 		fmt.Println("Configuration loaded from params")
 	} else if(loadConfiguration()) {
 		fmt.Println("Configuration loaded from JSON config file")
 	} else {
-		fmt.Println("Please enter a token, a soundcloud token and a prefix or add a config.json file")
+		fmt.Println("Please enter a token, a soundcloud token a youtube token and a prefix or add a config.json file")
 		return
 	}
 
@@ -97,6 +116,7 @@ func loadConfiguration() bool {
 	token = config.Token
 	prefix = config.Prefix
 	soundcloudToken = config.SoundcloudToken
+	youtubeToken = config.YoutubeToken
 	return true
 }
 
@@ -117,13 +137,15 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	} else if commandArgs[0] == prefix + "disconnect" {
 		disconnectFromVoiceChannel(channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "play" {
-		go playAudioFile(cleanLink(commandArgs[1]), channel.GuildID, voiceChannel, "web")
+		go playAudioFile(sanitizeLink(commandArgs[1]), channel.GuildID, voiceChannel, "web")
 	} else if commandArgs[0] == prefix + "stop" {
 		stopAudioFile(channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "youtube" {
-		go playYoutubeLink(cleanLink(commandArgs[1]), channel.GuildID, voiceChannel)
+		go playYoutubeLink(sanitizeLink(commandArgs[1]), channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix + "soundcloud" {
-		go playSoundcloudLink(cleanLink(commandArgs[1]), channel.GuildID, voiceChannel)
+		go playSoundcloudLink(sanitizeLink(commandArgs[1]), channel.GuildID, voiceChannel)
+	} else if commandArgs[0] == prefix + "playlist" {
+		go playYoutubePlaylist(commandArgs[1], channel.GuildID, voiceChannel)
 	}
 }
 
@@ -137,9 +159,14 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 	}
 }
 
-func cleanLink(link string) string {
+func sanitizeLink(link string) string {
 	firstTreatment := strings.Replace(link, "<", "", 1)
 	return strings.Replace(firstTreatment, ">", "", 1)
+}
+
+func parseYoutubePlaylistLink(link string) string {
+	standardPlaylistSanitize := strings.Replace(link, "https://www.youtube.com/playlist?list=", "", 1)
+	return standardPlaylistSanitize
 }
 
 func findVoiceConnection(guild string, channel string) (Voice, int) {
@@ -267,5 +294,20 @@ func playSoundcloudLink(link string, guild string, channel string) {
 }
 
 func playYoutubePlaylist(link string, guild string, channel string) {
+	var youtubeRequestLink string = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=" + link + "&key=" + youtubeToken
+	res, err := goreq.Request{
+		Uri: youtubeRequestLink,
+		MaxRedirects: 2,
+		Timeout: 5000 * time.Millisecond,
+	}.Do()
+	if err != nil {
+		fmt.Println(err)
+	}
+	var youtubeData YoutubeRoot
+	res.Body.FromJsonTo(&youtubeData)
+	for _, youtubeVideo := range youtubeData.Items {
+		var videoURL string = "https://www.youtube.com/watch?v=" + youtubeVideo.Snippet.Resource.VideoID
+		go playYoutubeLink(videoURL, guild, channel)
+	}
 	
 }
