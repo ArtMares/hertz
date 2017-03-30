@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-    <img alt="babel" src="https://travis-ci.org/romainisnel/discord-music-go.svg?branch=master">
+    <img alt="babel" src="https://travis-ci.org/romainisnel/hertz.svg?branch=master">
     <img alt="babel" src="https://img.shields.io/badge/version-1-blue.svg">
     <img alt="babel" src="https://goreportcard.com/badge/github.com/romainisnel/discord-music-go">
 </p>
