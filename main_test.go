@@ -1,7 +1,6 @@
 package main
 
 import "testing"
-import "fmt"
 
 // --------------------------------------------------------------------
 // TESTED FUNCTION : parseYoutubePlaylistLink
