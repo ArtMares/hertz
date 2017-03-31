@@ -98,6 +98,11 @@ func main() {
 	//Connection the bot to the Discord API and listening for errors
 	err = bot.Open()
 
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	//Informing the user the bot has started and wating for a channel return to prevent the program to stop
 	fmt.Println("The bot is launched, to stop it, press CTRL+C")
 	<-make(chan int)
