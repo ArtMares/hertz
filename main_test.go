@@ -5,7 +5,7 @@ import "testing"
 // --------------------------------------------------------------------
 // TESTED FUNCTION : parseYoutubePlaylistLink
 // --------------------------------------------------------------------
-func TestYoutubePlaylistParser(t *testing.T){
+func TestYoutubePlaylistParser(t *testing.T) {
 
 	// Check if the if the playlist ID is extracted from the link
 	var youtubePlaylistUrl = "https://www.youtube.com/playlist?list=PLM32QYSlkwzg3dzrvWHr7MdN_MF1LMjVN"
@@ -18,7 +18,7 @@ func TestYoutubePlaylistParser(t *testing.T){
 // --------------------------------------------------------------------
 // TESTED FUNCTION : sanitizeLink
 // --------------------------------------------------------------------
-func TestLinkSanitaze(t *testing.T){	
+func TestLinkSanitaze(t *testing.T) {
 
 	// Check if the < and > characters are removed from the link
 	var embedLink = "<https://www.youtube.com/watch?v=mJLINJYUdnQ>"
@@ -26,6 +26,5 @@ func TestLinkSanitaze(t *testing.T){
 	if parsedLink != "https://www.youtube.com/watch?v=mJLINJYUdnQ" {
 		t.Error("Exepected sanitizeLink function to return https://www.youtube.com/watch?v=mJLINJYUdnQ, but got", parsedLink)
 	}
-
 
 }
