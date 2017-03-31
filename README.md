@@ -5,6 +5,6 @@
 <p align="center">
     <img src="https://travis-ci.org/romainisnel/hertz.svg?branch=master">
     <img src="https://img.shields.io/badge/version-1-blue.svg">
-    <img src="https://goreportcard.com/report/github.com/romainisnel/hertz">
+    <img src="https://goreportcard.com/badge/github.com/romainisnel/hertz">
 </p>
 
