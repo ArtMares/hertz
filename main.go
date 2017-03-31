@@ -18,49 +18,6 @@ import (
 	"github.com/otium/ytdl"
 )
 
-//Defining voice structure
-type Voice struct {
-	VoiceConnection *discordgo.VoiceConnection
-	Channel         string
-	Guild           string
-	IsPlaying       bool
-}
-
-type Configuration struct {
-	Token           string `json:"token"`
-	Prefix          string `json:"prefix"`
-	SoundcloudToken string `json:"soundcloud_token"`
-	YoutubeToken    string `json:"youtube_token"`
-}
-
-type Song struct {
-	Link    string
-	Type    string
-	Guild   string
-	Channel string
-}
-
-type SoundcloudResponse struct {
-	Link  string `json:"stream_url"`
-	Title string `json:"title"`
-}
-
-type YoutubeRoot struct {
-	Items []YoutubeVideo `json:"items"`
-}
-
-type YoutubeVideo struct {
-	Snippet YoutubeSnippet `json:"snippet"`
-}
-
-type YoutubeSnippet struct {
-	Resource ResourceID `json:"resourceId"`
-}
-
-type ResourceID struct {
-	VideoID string `json:"videoId"`
-}
-
 var token string
 var prefix string
 var soundcloudToken string
@@ -201,12 +158,13 @@ func addSong(song Song) {
 
 func playAudioFile(file string, guild string, channel string, linkType string) {
 	voiceConnection, index := findVoiceConnection(guild, channel)
-	if voiceConnection.IsPlaying == false {
-		voiceConnections[index].IsPlaying = true
+	switch voiceConnection.PlayerStatus {
+	case IS_NOT_PLAYING:
+		voiceConnections[index].PlayerStatus = IS_PLAYING
 		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
-		voiceConnections[index].IsPlaying = false
+		voiceConnections[index].PlayerStatus = IS_NOT_PLAYING
 		nextSong()
-	} else {
+	case IS_PLAYING:
 		addSong(Song{
 			Link:    file,
 			Type:    linkType,
@@ -218,7 +176,7 @@ func playAudioFile(file string, guild string, channel string, linkType string) {
 
 func stopAudioFile(guild string, channel string) {
 	_, index := findVoiceConnection(guild, channel)
-	voiceConnections[index].IsPlaying = false
+	voiceConnections[index].PlayerStatus = IS_NOT_PLAYING
 	dgvoice.KillPlayer()
 }
 
@@ -245,7 +203,7 @@ func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string)
 		VoiceConnection: vs,
 		Channel:         channel,
 		Guild:           guild,
-		IsPlaying:       false,
+		PlayerStatus:    IS_NOT_PLAYING,
 	}
 
 }
