@@ -70,7 +70,6 @@ func main() {
 func loadConfiguration() bool {
 	file, err := ioutil.ReadFile("./config.json")
 	if err != nil {
-		fmt.Println(err)
 		return false
 	}
 	var config Configuration
@@ -143,12 +142,13 @@ func findVoiceConnection(guild string, channel string) (Voice, int) {
 
 }
 
-func nextSong() {
+func nextSong() bool {
 	if len(queue) > 0 {
 		go playAudioFile(queue[0].Link, queue[0].Guild, queue[0].Channel, queue[0].Type)
 		queue = append(queue[:0], queue[1:]...)
+		return true
 	} else {
-		return
+		return false
 	}
 }
 
@@ -163,7 +163,13 @@ func playAudioFile(file string, guild string, channel string, linkType string) {
 		voiceConnections[index].PlayerStatus = IS_PLAYING
 		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
 		voiceConnections[index].PlayerStatus = IS_NOT_PLAYING
-		nextSong()
+		if !nextSong() {
+			go func(){
+				time.Sleep(time.Second * time.Duration(120))
+				disconnectFromVoiceChannel(guild, channel)
+				dgvoice.KillPlayer()
+			}()
+		}
 	case IS_PLAYING:
 		addSong(Song{
 			Link:    file,
