@@ -18,6 +18,7 @@ import (
 	"github.com/otium/ytdl"
 )
 
+// Defining bot global variables
 var token string
 var prefix string
 var soundcloudToken string
@@ -25,6 +26,10 @@ var youtubeToken string
 var voiceConnections []Voice
 var queue []Song
 
+
+/**********************
+* Program entry point *
+***********************/
 func main() {
 	//Creating a new Discord Go instance
 
@@ -41,6 +46,7 @@ func main() {
 		return
 	}
 
+	//Creating a new instance of the bot
 	bot, err := discordgo.New("Bot " + token)
 
 	//Listening for possible error on bot creation
@@ -67,6 +73,10 @@ func main() {
 	return
 }
 
+// This function will load the configuration of the bot from a JSON file
+// If the file is not found or another error occur during the file load
+// the function will return false so the program knows it has to load the
+// configuration in a different way. If the file is loaded, it returns true
 func loadConfiguration() bool {
 	file, err := ioutil.ReadFile("./config.json")
 	if err != nil {
@@ -81,6 +91,10 @@ func loadConfiguration() bool {
 	return true
 }
 
+// On every new message, this function will be called. This function will read the
+// message and if a command is detected, will call the corresponding method
+// For exemple, if the play command is found in the message, the function will
+// call the playAudioFile function in a new goroutine
 func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var commandArgs []string = strings.Split(m.Content, " ")
 	channel, err := s.State.Channel(m.ChannelID)
@@ -109,6 +123,9 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
+// This function is used to close the connection to a voiceChannel. When called, it will crawl
+// the list of opened voice connections and if one is found corresponding to the parameters, it
+// will be closed
 func disconnectFromVoiceChannel(guild string, channel string) {
 	for index, voice := range voiceConnections {
 		if voice.Guild == guild {
@@ -119,16 +136,21 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 	}
 }
 
+// This function will sanitize a link that contains < and >, this is used to handle links with
+// disabled embed in Discord
 func sanitizeLink(link string) string {
 	firstTreatment := strings.Replace(link, "<", "", 1)
 	return strings.Replace(firstTreatment, ">", "", 1)
 }
 
+// This function is used to extract the id of a playlist given a youtube plaulist link
 func parseYoutubePlaylistLink(link string) string {
 	standardPlaylistSanitize := strings.Replace(link, "https://www.youtube.com/playlist?list=", "", 1)
 	return standardPlaylistSanitize
 }
 
+// This function will crawl the voice connections and try to find and return a voice connection
+// and its index if one is found
 func findVoiceConnection(guild string, channel string) (Voice, int) {
 	var voiceConnection Voice
 	var index int
@@ -142,6 +164,8 @@ func findVoiceConnection(guild string, channel string) (Voice, int) {
 
 }
 
+// This function will call the playAudioFile function in a new goroutine if songs are remaining in the
+// queue. If there is no song left in the queue, the function return false
 func nextSong() bool {
 	if len(queue) > 0 {
 		go playAudioFile(queue[0].Link, queue[0].Guild, queue[0].Channel, queue[0].Type)
@@ -152,10 +176,13 @@ func nextSong() bool {
 	}
 }
 
+// This function is used to add an item to the queue
 func addSong(song Song) {
 	queue = append(queue, song)
 }
 
+// This function is used to play every audio files, if the program is already playing, the function
+// will add the song to the queue and call the nextSonng function when the current song is over
 func playAudioFile(file string, guild string, channel string, linkType string) {
 	voiceConnection, index := findVoiceConnection(guild, channel)
 	switch voiceConnection.PlayerStatus {
@@ -180,12 +207,14 @@ func playAudioFile(file string, guild string, channel string, linkType string) {
 	}
 }
 
+// This function allow the user to stop the current playing file
 func stopAudioFile(guild string, channel string) {
 	_, index := findVoiceConnection(guild, channel)
 	voiceConnections[index].PlayerStatus = IS_NOT_PLAYING
 	dgvoice.KillPlayer()
 }
 
+// This function allow the bot to find the voice channel id of the user who called the connect command
 func findVoiceChannelID(guild *discordgo.Guild, message *discordgo.MessageCreate) string {
 	var channelID string
 
@@ -197,6 +226,10 @@ func findVoiceChannelID(guild *discordgo.Guild, message *discordgo.MessageCreate
 	return channelID
 }
 
+// This function allow the user to connect the bot to a channel. It will ask the voice channel id
+// of the user to the findVoiceChannelID function and will then call the ChannelVoiceJoin
+// of the discordgo.Session instance. Then it checks if the voice connection already exist and
+// return a new Voice object
 func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string) Voice {
 	vs, err := bot.ChannelVoiceJoin(guild, channel, false, true)
 
@@ -214,6 +247,7 @@ func connectToVoiceChannel(bot *discordgo.Session, guild string, channel string)
 
 }
 
+// This function check if there is already an existing voice connection for the givent params
 func checkForDoubleVoiceConnection(guild string, channel string) {
 	for index, voice := range voiceConnections {
 		if voice.Guild == guild {
@@ -222,6 +256,9 @@ func checkForDoubleVoiceConnection(guild string, channel string) {
 	}
 }
 
+// This function is used to play the audio of a youtube video. It use the ytdl pacakge to get
+// the video informations and then look for the good format. When a link is found, it calls the
+// playAudioFile function in a new goroutine
 func playYoutubeLink(link string, guild string, channel string) {
 	video, err := ytdl.GetVideoInfo(link)
 
@@ -244,6 +281,8 @@ func playYoutubeLink(link string, guild string, channel string) {
 
 }
 
+// This function is used to play a soundcloud link. It make a call to the API and to get the stream url
+// it then call the playAudioFile function in a new goroutine
 func playSoundcloudLink(link string, guild string, channel string) {
 	var scRequestUri string = "https://api.soundcloud.com/resolve?url=" + link + "&client_id=" + soundcloudToken
 	res, err := goreq.Request{
@@ -260,6 +299,9 @@ func playSoundcloudLink(link string, guild string, channel string) {
 	go playAudioFile(soundcloudData.Link, guild, channel, "soundcloud")
 }
 
+// This function is used to play a youtube playlist, it will make a call to the youtube API to get the
+// link for every video in the playlist. When the items are found, it will iterate and call the playYoutubeLink
+// function for every link, they will automatically be added to the queue
 func playYoutubePlaylist(link string, guild string, channel string) {
 	var youtubeRequestLink string = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=" + link + "&key=" + youtubeToken
 	res, err := goreq.Request{
