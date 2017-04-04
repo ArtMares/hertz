@@ -12,7 +12,7 @@ import (
 
 //External libraries
 import (
-	"github.com/bwmarrin/dgvoice"
+	"github.com/romainisnel/dgvoice"
 	"github.com/bwmarrin/discordgo"
 	"github.com/franela/goreq"
 	"github.com/otium/ytdl"
