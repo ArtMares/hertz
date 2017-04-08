@@ -5,7 +5,7 @@ go:
 
 install:
   - go get github.com/bwmarrin/discordgo
-  - go get github.com/romainisnel/dgvoice
+  - go get github.com/bwmarrin/dgvoice
   - go get github.com/otium/ytdl
   - go get github.com/franela/goreq
 
