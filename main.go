@@ -12,7 +12,7 @@ import (
 
 //External libraries
 import (
-	"github.com/romainisnel/dgvoice"
+	"github.com/bwmarrin/dgvoice"
 	"github.com/bwmarrin/discordgo"
 	"github.com/franela/goreq"
 	"github.com/otium/ytdl"
@@ -25,7 +25,6 @@ var soundcloudToken string
 var youtubeToken string
 var voiceConnections []Voice
 var queue []Song
-
 
 /**********************
 * Program entry point *
@@ -190,13 +189,6 @@ func playAudioFile(file string, guild string, channel string, linkType string) {
 		voiceConnections[index].PlayerStatus = IS_PLAYING
 		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
 		voiceConnections[index].PlayerStatus = IS_NOT_PLAYING
-		if !nextSong() {
-			go func(){
-				time.Sleep(time.Second * time.Duration(120))
-				disconnectFromVoiceChannel(guild, channel)
-				dgvoice.KillPlayer()
-			}()
-		}
 	case IS_PLAYING:
 		addSong(Song{
 			Link:    file,
