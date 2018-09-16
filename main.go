@@ -25,6 +25,7 @@ var soundcloudToken string
 var youtubeToken string
 var voiceConnections []Voice
 var queue []Song
+var stopChannel chan bool
 
 /**********************
 * Program entry point *
@@ -44,6 +45,8 @@ func main() {
 		fmt.Println("Please enter a token, a soundcloud token a youtube token and a prefix or add a config.json file")
 		return
 	}
+
+	stopChannel = make(chan bool)
 
 	//Creating a new instance of the bot
 	bot, err := discordgo.New("Bot " + token)
@@ -112,7 +115,7 @@ func commandHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	} else if commandArgs[0] == prefix+"play" {
 		go playAudioFile(sanitizeLink(commandArgs[1]), channel.GuildID, voiceChannel, "web")
 	} else if commandArgs[0] == prefix+"stop" {
-		stopAudioFile(channel.GuildID, voiceChannel)
+		stopChannel <- true
 	} else if commandArgs[0] == prefix+"youtube" {
 		go playYoutubeLink(sanitizeLink(commandArgs[1]), channel.GuildID, voiceChannel)
 	} else if commandArgs[0] == prefix+"soundcloud" {
@@ -129,7 +132,7 @@ func disconnectFromVoiceChannel(guild string, channel string) {
 	for index, voice := range voiceConnections {
 		if voice.Guild == guild {
 			_ = voice.VoiceConnection.Disconnect()
-			dgvoice.KillPlayer()
+			stopChannel <- true
 			voiceConnections = append(voiceConnections[:index], voiceConnections[index+1:]...)
 		}
 	}
@@ -187,7 +190,7 @@ func playAudioFile(file string, guild string, channel string, linkType string) {
 	switch voiceConnection.PlayerStatus {
 	case IS_NOT_PLAYING:
 		voiceConnections[index].PlayerStatus = IS_PLAYING
-		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file)
+		dgvoice.PlayAudioFile(voiceConnection.VoiceConnection, file, stopChannel)
 		voiceConnections[index].PlayerStatus = IS_NOT_PLAYING
 	case IS_PLAYING:
 		addSong(Song{
@@ -203,7 +206,7 @@ func playAudioFile(file string, guild string, channel string, linkType string) {
 func stopAudioFile(guild string, channel string) {
 	_, index := findVoiceConnection(guild, channel)
 	voiceConnections[index].PlayerStatus = IS_NOT_PLAYING
-	dgvoice.KillPlayer()
+	//dgvoice.KillPlayer()
 }
 
 // This function allow the bot to find the voice channel id of the user who called the connect command
