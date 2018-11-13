@@ -85,7 +85,10 @@ func loadConfiguration() bool {
 		return false
 	}
 	var config Configuration
-	json.Unmarshal(file, config)
+	err = json.Unmarshal(file, &config)
+	if err != nil {
+		return false
+	}
 	token = config.Token
 	prefix = config.Prefix
 	soundcloudToken = config.SoundcloudToken
