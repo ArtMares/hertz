@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -29,6 +30,15 @@ const (
 	DiscordHttpUserAgent         = "DiscordBot (" + DiscordApiRoot + ", " + DiscordApiVersion + ")"
 	DiscordUserInfoEndpoint      = "/users/@me"
 	DiscordUserGuildsEndpoint	 = "/users/@me/guilds"
+	DiscordGuildChannelsEndpoint = "/guilds/%s/channels"
+
+	DiscordChannelTypeText  = 0x0
+	DiscordChannelTypeDM    = 0x1
+	DiscordChannelTypeVoice = 0x2
+	DiscordChannelTypeGroupDM = 0x3
+	DiscordChannelTypeCategory = 0x4
+	DiscordChannelTypeNews = 0x5
+	DiscordChannelTypeStore = 0x6
 
 	HttpHeaderUserAgent     = "User-Agent"
 	HttpHeaderAuthorization = "Authorization"
@@ -71,6 +81,10 @@ func (b *Bot) init() error {
 		return err
 	}
 	err = b.getBotGuilds()
+	if err != nil {
+		return err
+	}
+	err = b.getGuildsChannels()
 	if err != nil {
 		return err
 	}
@@ -132,6 +146,32 @@ func (b *Bot) getBotGuilds() error {
 	err = json.Unmarshal(body, &b.Guilds)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func (b *Bot) getGuildsChannels() error {
+	for index, guild := range b.Guilds {
+		client, req := b.http(http.MethodGet, DiscordApiBase + fmt.Sprintf(DiscordGuildChannelsEndpoint, guild.Id), nil)
+		resp, err := client.Do(&req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return berr(ErrorInvalidAuthorizationToken)
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(body, &b.Guilds[index].Channels)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
