@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"io"
 	"io/ioutil"
 	"net/http"
 )
@@ -21,50 +22,80 @@ func main() {
 	return
 }
 
-// Discord API
 const (
-	DISCORD_API_ROOT = "https://discordapp.com/api/v"
-	DISCORD_API_VERSION  = "6"
-	DISCORD_API_BASE = DISCORD_API_ROOT + DISCORD_API_VERSION
-	DISCORD_HTTP_USER_AGENT = "DiscordBot (" + DISCORD_API_ROOT + ", " + DISCORD_API_VERSION + ")"
+	DiscordApiRoot               = "https://discordapp.com/api/v"
+	DiscordApiVersion            = "6"
+	DiscordApiBase               = DiscordApiRoot + DiscordApiVersion
+	DiscordHttpUserAgent         = "DiscordBot (" + DiscordApiRoot + ", " + DiscordApiVersion + ")"
+	DiscordUserInfoEndpoint      = "/users/@me"
+	DiscordUserGuildsEndpoint	 = "/users/@me/guilds"
 
-	HTTP_METHOD_GET = "GET"
-	HTTP_METHOD_POST = "POST"
-	HTTP_METHOD_DELETE = "DELETE"
-	HTTP_METHOD_PUT = "PUT"
+	HttpHeaderUserAgent     = "User-Agent"
+	HttpHeaderAuthorization = "Authorization"
 
-	HTTP_HEADER_USER_AGENT = "User-Agent"
-	HTTP_HEADER_AUTHORIZATION = "Authorization"
-
-	ERROR_BASE = "Error: "
-	ERROR_INVALID_AUTHORIZATION_TOKEN = "Invalid authentication token"
+	ErrorBase                      = "Error: "
+	ErrorInvalidAuthorizationToken = "Invalid authentication token"
 )
 
+// Types
 type Bot struct {
 	Id string
 	Username string
 	Token string
+	Guilds []Guild
 }
 
+type Guild struct {
+	Id string
+	Name string
+	Permissions int
+	Channels []Channel
+	Unavailable bool
+}
+
+type Channel struct {
+	Id string
+	Type int
+	Bitrate int
+}
+
+// Methods
 func (b *Bot) New(token string) error {
 	b.Token = token
 	return b.init()
 }
 
 func (b *Bot) init() error {
-	client := http.Client{}
-	req, err := http.NewRequest(HTTP_METHOD_GET, DISCORD_API_BASE + "/users/@me", nil)
+	err := b.getBotInfo()
 	if err != nil {
 		return err
 	}
-	req.Header.Add(HTTP_HEADER_USER_AGENT, DISCORD_HTTP_USER_AGENT)
-	req.Header.Add(HTTP_HEADER_AUTHORIZATION, "Bot " + b.Token)
-	resp, err := client.Do(req)
+	err = b.getBotGuilds()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *Bot) http(method string, url string, body io.ReadCloser) (http.Client, http.Request) {
+	client := http.Client{}
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Add(HttpHeaderUserAgent, DiscordHttpUserAgent)
+	req.Header.Add(HttpHeaderAuthorization, "Bot " + b.Token)
+	return client, *req
+}
+
+func (b *Bot) getBotInfo() error {
+	client, req := b.http(http.MethodGet, DiscordApiBase+DiscordUserInfoEndpoint, nil)
+	resp, err := client.Do(&req)
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return berr(ERROR_INVALID_AUTHORIZATION_TOKEN)
+		return berr(ErrorInvalidAuthorizationToken)
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -81,7 +112,31 @@ func (b *Bot) init() error {
 	return nil
 }
 
+func (b *Bot) getBotGuilds() error {
+	client, req := b.http(http.MethodGet, DiscordApiBase+DiscordUserGuildsEndpoint, nil)
+	resp, err := client.Do(&req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return berr(ErrorInvalidAuthorizationToken)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(body, &b.Guilds)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Helper functions
 func berr(error string) error {
-	return errors.New(ERROR_BASE + error)
+	return errors.New(ErrorBase + error)
 }
