@@ -21,8 +21,14 @@ func main() {
 	var token = flag.String("token", "", "Discord bot authentication token")
 	var bot Bot
 	flag.Parse()
-	bot.OnMessage = func(msg string) {
-		fmt.Println("[Discord] ", msg, len(msg), " bytes")
+	bot.OnMessage = func(p Payload) {
+		if p.T == GwEvMessageCreate {
+			if p.D["content"] == "!s" {
+				_ = bot.Socket.Close(websocket.StatusNormalClosure, "PROGRAM_END")
+				bot.WG.Done()
+				os.Exit(0)
+			}
+		}
 	}
 	err := bot.New(*token)
 	if err != nil {
@@ -32,6 +38,8 @@ func main() {
 }
 
 const (
+
+	// ULRs
 	DiscordApiRoot               = "https://discordapp.com/api/v"
 	DiscordApiVersion            = "6"
 	DiscordApiBase               = DiscordApiRoot + DiscordApiVersion
@@ -42,32 +50,73 @@ const (
 	DiscordGatewayBotEndpoint    = "/gateway/bot"
 	DiscordGatewayEndpoint       = "wss://gateway.discord.gg/?v=%s&encoding=json"
 
-	DiscordChannelTypeText     = 0x0
-	DiscordChannelTypeDM       = 0x1
-	DiscordChannelTypeVoice    = 0x2
-	DiscordChannelTypeGroupDM  = 0x3
-	DiscordChannelTypeCategory = 0x4
-	DiscordChannelTypeNews     = 0x5
-	DiscordChannelTypeStore    = 0x6
+	// Channel types
+	ChannelTypeText     = 0x0
+	ChannelTypeDM       = 0x1
+	ChannelTypeVoice    = 0x2
+	ChannelTypeGroupDM  = 0x3
+	ChannelTypeCategory = 0x4
+	ChannelTypeNews     = 0x5
+	ChannelTypeStore    = 0x6
 
-	DiscordGwOpcDispatch            = 0x0 // R
-	DiscordGwOpcHeartbeat           = 0x1 // s
-	DiscordGwOpcIdentify            = 0x2 // s
-	DiscordGwOpcStatusUpdate        = 0x3 // s
-	DiscordGwOpcVoiceStateUpdate    = 0x4 // s
-	DiscordGwOpcResume              = 0x6 // s
-	DiscordGwOpcReconnect           = 0x7 // R
-	DiscordGwOpcRequestGuildMembers = 0x8 // s
-	DiscordGwOpcInvalidSession      = 0x9 // R
-	DiscordGwOpcHello               = 0xa // R
-	DiscordGwOpcHeartbeatACK        = 0xb // R
+	// Gateway opcodes
+	GwOpcDispatch            = 0x0 // R
+	GwOpcHeartbeat           = 0x1 // s
+	GwOpcIdentify            = 0x2 // s
+	GwOpcStatusUpdate        = 0x3 // s
+	GwOpcVoiceStateUpdate    = 0x4 // s
+	GwOpcResume              = 0x6 // s
+	GwOpcReconnect           = 0x7 // R
+	GwOpcRequestGuildMembers = 0x8 // s
+	GwOpcInvalidSession      = 0x9 // R
+	GwOpcHello               = 0xa // R
+	GwOpcHeartbeatACK        = 0xb // R
 
+	// Gateway Events
+	GwEvHello                    = "HELLO"
+	GwEvReady                    = "READY"
+	GwEvResumed                  = "RESUMED"
+	GwEvReconnect                = "RECONNECT"
+	GwEvInvalidSession           = "INVALID_SESSION"
+	GwEvChannelCreate            = "CHANNEL_CREATE"
+	GwEvChannelUpdate            = "CHANNEL_UPDATE"
+	GwEvChannelDelete            = "CHANNEL_DELETE"
+	GwEvChannelPinsUpdate        = "CHANNEL_PINS_UPDATE"
+	GwEvGuildCreate              = "GUILD_CREATE"
+	GwEvGuildUpdate              = "GUILD_UPDATE"
+	GwEvGuildDelete              = "GUILD_DELETE"
+	GwEvGuildBanAdd              = "GUILD_BAN_ADD"
+	GwEvGuildBanRemove           = "GUILD_BAN_REMOVE"
+	GwEvGuildEmojisUpdate        = "GUILD_EMOJIS_UPDATE"
+	GwEvGuildIntegrationsUpdate  = "GUILD_INTEGRATION_UPDATE"
+	GwEvGuildMemberAdd           = "GUILD_MEMBER_ADD"
+	GwEvGuildMemberRemove        = "GUILD_MEMBER_REMOVE"
+	GwEvGuildMemberUpdate        = "GUILD_MEMBER_UPDATE"
+	GwEvGuildMembersChunk        = "GUILD_MEMBERS_CHUNK"
+	GwEvGuildRoleCreate          = "GUILD_ROLE_CREATE"
+	GwEvGuildRoleUpdate          = "GUILD_ROLE_UPDATE"
+	GwEvGuildRoleDelete          = "GUILD_ROLE_DELETE"
+	GwEvMessageCreate            = "MESSAGE_CREATE"
+	GwEvMessageUpdate            = "MESSAGE_UPDATE"
+	GwEvMessageDelete            = "MESSAGE_DELETE"
+	GwEvMessageDeleteBulk        = "MESSAGE_DELETE_BULK"
+	GwEvMessageReactionAdd       = "MESSAGE_REACTION_ADD"
+	GwEvMessageReactionRemove    = "MESSAGE_REACTION_REMOVE"
+	GwEvMessageReactionRemoveAll = "MESSAGE_REACTION_REMOVE_ALL"
+	GwEvPresenceUpdate           = "PRESENCE_UPDATE"
+	GwEvTypingStart              = "TYPING_START"
+	GwEvUserUpdate               = "USER_UPDATE"
+	GwEvVoiceStateUpdate         = "VOICE_STATE_UPDATE"
+	GwEvVoiceServerUpdate        = "VOICE_SERVER_UPDATE"
+	GwEvWebhooksUpdate           = "WEBHOOKS_UPDATE"
+
+	// HTTP headers
 	HttpHeaderUserAgent     = "User-Agent"
 	HttpHeaderAuthorization = "Authorization"
 
-	ErrorBase                      = "Error: "
-	ErrorInvalidAuthorizationToken = "Invalid authentication token"
-	ErrorGatewayConnection         = "Gateway connection error"
+	// Errors
+	ErrorInvalidAuthorizationToken = "invalid authentication token"
+	ErrorGatewayConnection         = "gateway connection error"
 )
 
 // Types
@@ -81,7 +130,7 @@ type Bot struct {
 	Heartbeat float64
 	WG        sync.WaitGroup
 	Ready     bool
-	OnMessage func(mgs string)
+	OnMessage func(p Payload)
 }
 
 type Guild struct {
@@ -99,9 +148,9 @@ type Channel struct {
 }
 
 type Payload struct {
-	T  string `json:"t"`
-	S  string `json:"s"`
-	Op int8 `json:"op"`
+	T  string                 `json:"t"`
+	S  int                    `json:"s"`
+	Op int8                   `json:"op"`
 	D  map[string]interface{} `json:"d"`
 }
 
@@ -156,7 +205,7 @@ func (b *Bot) getBotInfo() error {
 		return err
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return berr(ErrorInvalidAuthorizationToken)
+		return errors.New(ErrorInvalidAuthorizationToken)
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -180,7 +229,7 @@ func (b *Bot) getBotGuilds() error {
 		return err
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return berr(ErrorInvalidAuthorizationToken)
+		return errors.New(ErrorInvalidAuthorizationToken)
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -205,7 +254,7 @@ func (b *Bot) getGuildsChannels() error {
 			return err
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
-			return berr(ErrorInvalidAuthorizationToken)
+			return errors.New(ErrorInvalidAuthorizationToken)
 		}
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -230,7 +279,7 @@ func (b *Bot) connectGateway() error {
 		return err
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return berr(ErrorInvalidAuthorizationToken)
+		return errors.New(ErrorInvalidAuthorizationToken)
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -243,7 +292,7 @@ func (b *Bot) connectGateway() error {
 	var gateway map[string]interface{}
 	err = json.Unmarshal(body, &gateway)
 	b.Context = context.Background()
-	b.Socket, _, err = websocket.Dial(b.Context,fmt.Sprint(gateway["url"]), nil)
+	b.Socket, _, err = websocket.Dial(b.Context, fmt.Sprint(gateway["url"]), nil)
 	if err != nil {
 		return err
 	}
@@ -256,12 +305,12 @@ func (b *Bot) connectGateway() error {
 	if err != nil {
 		return err
 	}
-	if payload.Op == DiscordGwOpcHello {
+	if payload.Op == GwOpcHello {
 		b.Heartbeat = payload.D["heartbeat_interval"].(float64)
 		var payload Payload
 		payload.D = make(map[string]interface{})
 		payload.D["token"] = b.Token
-		payload.Op = DiscordGwOpcIdentify
+		payload.Op = GwOpcIdentify
 		properties := make(map[string]interface{})
 		properties["$os"] = "linux"
 		properties["$browser"] = "hertz"
@@ -282,15 +331,13 @@ func (b *Bot) connectGateway() error {
 		}
 		payload = Payload{}
 		err = json.Unmarshal(bytes, &payload)
-		if payload.Op == DiscordGwOpcDispatch && payload.T == "READY" {
+		if payload.Op == GwOpcDispatch && payload.T == "READY" {
 			b.Ready = true
 		}
 		return nil
 	} else {
-		return berr(ErrorGatewayConnection)
+		return errors.New(ErrorGatewayConnection)
 	}
-
-	return nil
 }
 
 func (b *Bot) readMessages() {
@@ -300,14 +347,19 @@ func (b *Bot) readMessages() {
 		if _, msg, err = b.Socket.Read(b.Context); err != nil && err != io.EOF {
 			panic(err)
 		}
-		b.OnMessage(string(msg))
+		var p Payload
+		err = json.Unmarshal(msg, &p)
+		if err != nil {
+			panic(err)
+		}
+		b.OnMessage(p)
 	}
 }
 
 func (b *Bot) handleHeartbeat() {
 	for {
-		hearbeat := Payload{Op: DiscordGwOpcHeartbeat}
-		bytes, err := json.Marshal(hearbeat)
+		heartbeat := Payload{Op: GwOpcHeartbeat}
+		bytes, err := json.Marshal(heartbeat)
 		if err != nil {
 			b.WG.Done()
 			panic(err)
@@ -323,9 +375,4 @@ func (b *Bot) handleHeartbeat() {
 		}
 		time.Sleep(time.Duration(b.Heartbeat) * time.Millisecond)
 	}
-}
-
-// Helper functions
-func berr(error string) error {
-	return errors.New(ErrorBase + error)
 }
