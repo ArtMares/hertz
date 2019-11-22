@@ -20,6 +20,9 @@ func main() {
 	var token = flag.String("token", "", "Discord bot authentication token")
 	var bot Bot
 	flag.Parse()
+	bot.OnMessage = func(msg string) {
+		fmt.Println("[Discord] ", msg)
+	}
 	err := bot.New(*token)
 	if err != nil {
 		panic(err)
@@ -47,13 +50,13 @@ const (
 	DiscordChannelTypeStore    = 0x6
 
 	DiscordGwOpcDispatch            = 0x0 // R
-	DiscordGwOpcHeartbeat           = 0x1 // S
-	DiscordGwOpcIdentify            = 0x2 // S
-	DiscordGwOpcStatusUpdate        = 0x3 // S
-	DiscordGwOpcVoiceStateUpdate    = 0x4 // S
-	DiscordGwOpcResume              = 0x6 // S
+	DiscordGwOpcHeartbeat           = 0x1 // s
+	DiscordGwOpcIdentify            = 0x2 // s
+	DiscordGwOpcStatusUpdate        = 0x3 // s
+	DiscordGwOpcVoiceStateUpdate    = 0x4 // s
+	DiscordGwOpcResume              = 0x6 // s
 	DiscordGwOpcReconnect           = 0x7 // R
-	DiscordGwOpcRequestGuildMembers = 0x8 // S
+	DiscordGwOpcRequestGuildMembers = 0x8 // s
 	DiscordGwOpcInvalidSession      = 0x9 // R
 	DiscordGwOpcHello               = 0xa // R
 	DiscordGwOpcHeartbeatACK        = 0xb // R
@@ -75,6 +78,8 @@ type Bot struct {
 	Socket     *websocket.Conn
 	Heartbeart float64
 	WG         sync.WaitGroup
+	Ready	   bool
+	OnMessage  func(mgs string)
 }
 
 type Guild struct {
@@ -92,10 +97,10 @@ type Channel struct {
 }
 
 type Payload struct {
-	T  string
-	S  string
-	Op int8
-	D  map[string]interface{}
+	T  string `json:"t"`
+	S  string `json:"s"`
+	Op int8 `json:"op"`
+	D  map[string]interface{} `json:"d"`
 }
 
 // Methods
@@ -121,9 +126,13 @@ func (b *Bot) init() error {
 	if err != nil {
 		return err
 	}
-	/*b.WG.Add(1)
-	go b.handleHeartbeat()
-	b.WG.Wait()*/
+	if b.Ready {
+		b.WG.Add(1)
+		go b.readMessages()
+		b.WG.Add(1)
+		go b.handleHeartbeat()
+		b.WG.Wait()
+	}
 	return nil
 }
 
@@ -247,11 +256,51 @@ func (b *Bot) connectGateway() error {
 	}
 	if payload.Op == DiscordGwOpcHello {
 		b.Heartbeart = payload.D["heartbeat_interval"].(float64)
+		var payload Payload
+		payload.D = make(map[string]interface{})
+		payload.D["token"] = b.Token
+		payload.Op = DiscordGwOpcIdentify
+		properties := make(map[string]interface{})
+		properties["$os"] = "linux"
+		properties["$browser"] = "hertz"
+		properties["$device"] = "hertz"
+		payload.D["properties"] = properties
+		bytes, err := json.Marshal(&payload)
+		if err != nil {
+			return err
+		}
+		n, err := b.Socket.Write(bytes)
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "[Bot] Identify (%d bytes)\n", n)
+		bytes = make([]byte, 1024)
+		n, err = b.Socket.Read(bytes)
+		if err != nil {
+			return err
+		}
+		payload = Payload{}
+		err = json.Unmarshal(bytes[:n], &payload)
+		if payload.Op == DiscordGwOpcDispatch && payload.T == "READY" {
+			b.Ready = true
+		}
 		return nil
 	} else {
 		return berr(ErrorGatewayConnection)
 	}
 
+}
+
+func (b *Bot) readMessages() {
+	for {
+		var msg = make([]byte, 1e9)
+		var err error
+		var n int
+		if n, err = b.Socket.Read(msg); err != nil && err != io.EOF {
+			panic(err)
+		}
+		b.OnMessage(string(msg[:n]))
+	}
 }
 
 func (b *Bot) handleHeartbeat() {
@@ -267,7 +316,7 @@ func (b *Bot) handleHeartbeat() {
 			b.WG.Done()
 			panic(err)
 		}
-		_, err = fmt.Fprintf(os.Stdout, "WebSocket Payload : %d bytes sent with Opcode %x\n", n, hearbeat.Op)
+		_, err = fmt.Fprintf(os.Stdout, "[Bot] Heartbeat (%d bytes)\n", n)
 		if err != nil {
 			panic(err)
 		}
