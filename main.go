@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"nhooyr.io/websocket"
 	"os"
@@ -27,7 +29,156 @@ func main() {
 				_ = bot.Socket.Close(websocket.StatusNormalClosure, "PROGRAM_END")
 				bot.WG.Done()
 				os.Exit(0)
+			} else if p.D["content"] == "!j" {
+				var payload Payload
+				payload.Op = GwOpcVoiceStateUpdate
+				payload.D = map[string]interface{}{
+					"guild_id": "579320947337592842",
+					"channel_id" : "648456996042964992",
+					"self_mute": false,
+					"self_deaf": true,
+				}
+				bytes, err := json.Marshal(payload)
+				if err != nil {
+					panic(err)
+				}
+				err = bot.Socket.Write(bot.Context, websocket.MessageText, bytes)
+				if err != nil {
+					panic(err)
+				}
 			}
+		} else if p.T == GwEvInvalidSession {
+			_ = bot.Socket.Close(websocket.StatusAbnormalClosure, "INVALID_SESSION")
+			bot.WG.Done()
+			os.Exit(ErrorInvalidSession)
+		} else if p.T == GwEvVoiceServerUpdate {
+
+			endpoint := fmt.Sprintf("ws://%s", p.D["endpoint"])
+			token := fmt.Sprintf("%s", p.D["token"])
+
+			// Send identify to voice server
+			var err error
+			bot.Voice, _, err = websocket.Dial(bot.Context, endpoint, nil)
+
+			if err != nil {
+				panic(err)
+			}
+
+			var payload Payload
+			payload.Op = GwOpcDispatch
+			payload.D = map[string]interface{}{
+				"server_id": "579320947337592842",
+				"user_id": bot.Id,
+				"session_id": bot.VoiceSession,
+				"token": token,
+			}
+			bytes, err := json.Marshal(payload)
+
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Println(string(bytes))
+
+			err = bot.Voice.Write(bot.Context, websocket.MessageText, bytes)
+
+			if err != nil {
+				panic(err)
+			}
+
+			_, bytes, err = bot.Voice.Read(bot.Context)
+
+			if err != nil {
+				panic(err)
+			}
+
+			var pa Payload
+			err = json.Unmarshal(bytes, &pa)
+
+			if err != nil {
+				panic(err)
+			}
+
+			bot.VoiceHeartbeat = pa.D["heartbeat_interval"].(float64)
+
+			fmt.Println(string(bytes))
+			go bot.handleVoiceHeartbeat()
+			go bot.readVoiceData()
+
+		} else if p.T == GwEvVoiceStateUpdate {
+
+			sessionId := p.D["session_id"].(string)
+			bot.VoiceSession = sessionId
+
+		}
+	}
+	bot.OnVoiceData = func(p Payload) {
+		//fmt.Println(p)
+		if p.Op == 0x2 {
+
+			ip := net.ParseIP(p.D["ip"].(string))
+			port := p.D["port"].(float64)
+			ssrc := p.D["ssrc"].(float64)
+			// Open UDP connection
+			udpconn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP:ip,Port:int(port)})
+
+			if err != nil {
+				panic(err)
+			}
+
+			bytes := make([]byte, 70)
+			binary.BigEndian.PutUint32(bytes, uint32(ssrc))
+			n, err := udpconn.Write(bytes)
+
+			if err != nil {
+				panic(err)
+			}
+
+			_,_ = fmt.Fprintf(os.Stdout,"[Bot] Sent SSRC to UDP connection (%d bytes)\n", n)
+
+
+			bytes = make([]byte, 70)
+			n, err = udpconn.Read(bytes)
+
+			if err != nil {
+				panic(err)
+			}
+
+			//fmt.Println(string(bytes[:n]))
+
+			var payload Payload
+			payload.Op = 0x1
+			payload.D = map[string]interface{}{
+				"protocol": "udp",
+				"data": map[string]interface{}{
+					"address": string(bytes[4:15]),
+					"port": binary.BigEndian.Uint16(bytes[68:70]),
+					"mode": "xsalsa20_poly1305_lite",
+				},
+			}
+
+			bytes, err = json.Marshal(payload)
+
+			err = bot.Voice.Write(bot.Context, websocket.MessageText, bytes)
+
+			if err != nil {
+				panic(err)
+			}
+
+			go func() {
+				for {
+					buffer := make([]byte, 1e6)
+					n, err := udpconn.Read(buffer)
+					if err != nil {
+						panic(err)
+					}
+
+					fmt.Println("[UDP]", buffer[:n])
+				}
+			}()
+
+			fmt.Println("UDP Connection established to", udpconn.RemoteAddr().String())
+
 		}
 	}
 	err := bot.New(*token)
@@ -117,6 +268,10 @@ const (
 	// Errors
 	ErrorInvalidAuthorizationToken = "invalid authentication token"
 	ErrorGatewayConnection         = "gateway connection error"
+
+	// Program error codes
+	ErrorInvalidSession = 0x1
+	ErrorNetwork        = 0x2
 )
 
 // Types
@@ -131,6 +286,10 @@ type Bot struct {
 	WG        sync.WaitGroup
 	Ready     bool
 	OnMessage func(p Payload)
+	Voice *websocket.Conn
+	VoiceSession string
+	VoiceHeartbeat float64
+	OnVoiceData func(p Payload)
 }
 
 type Guild struct {
@@ -171,7 +330,7 @@ func (b *Bot) init() error {
 	}
 	err = b.getGuildsChannels()
 	if err != nil {
-		return err
+		panic(err)
 	}
 	err = b.connectGateway()
 	if err != nil {
@@ -348,11 +507,26 @@ func (b *Bot) readMessages() {
 			panic(err)
 		}
 		var p Payload
+		//fmt.Println(string(msg))
 		err = json.Unmarshal(msg, &p)
 		if err != nil {
 			panic(err)
 		}
 		b.OnMessage(p)
+	}
+}
+
+func (b *Bot) readVoiceData() {
+	for {
+		var msg = make([]byte, 1e5)
+		var err error
+		if _, msg, err = b.Voice.Read(b.Context); err != nil && err != io.EOF {
+			panic(err)
+		}
+		fmt.Println(string(msg))
+		var p Payload
+		err = json.Unmarshal(msg, &p)
+		b.OnVoiceData(p)
 	}
 }
 
@@ -374,5 +548,31 @@ func (b *Bot) handleHeartbeat() {
 			panic(err)
 		}
 		time.Sleep(time.Duration(b.Heartbeat) * time.Millisecond)
+	}
+}
+
+func (b *Bot) handleVoiceHeartbeat() {
+	for {
+
+		heartbeat := map[string]interface{}{
+			"d": 1501184119561,
+			"op": 3,
+		}
+		bytes, err := json.Marshal(heartbeat)
+		if err != nil {
+			b.WG.Done()
+			panic(err)
+		}
+		err = b.Voice.Write(b.Context, websocket.MessageText, bytes)
+		if err != nil {
+			b.WG.Done()
+			panic(err)
+		}
+		_, err = fmt.Fprintf(os.Stdout, "[Bot] Voice Heartbeat (%d bytes)\n", len(bytes))
+		if err != nil {
+			panic(err)
+		}
+		///if (b.Voice.)
+		time.Sleep(time.Duration(b.VoiceHeartbeat) * time.Millisecond)
 	}
 }
